@@ -1,0 +1,5 @@
+<launch>
+
+    <node name="spawner" pkg="pepper_mtc" type="object"  output="screen" />
+    <node name="grasping" pkg="pepper_mtc" type="pepper"  output="screen" />
+</launch>
