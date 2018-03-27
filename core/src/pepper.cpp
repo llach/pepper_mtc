@@ -4,6 +4,7 @@
 
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/generate_pose.h>
+#include <moveit/task_constructor/stages/move_relative.h>
 #include <moveit/task_constructor/stages/simple_grasp.h>
 #include <moveit/task_constructor/stages/pick.h>
 #include <moveit/task_constructor/stages/compute_ik.h>
@@ -25,7 +26,7 @@ using namespace moveit::task_constructor;
 
 std::shared_ptr<Task> task_ptr_;
 
-void fillTask(Stage* initial_stage, std::string obj) {
+void fillTask(Stage* initial_stage, std::string object_name) {
 
     std::string tool_frame_left = "l_grasp_frame";
     std::string tool_frame_right = "r_grasp_frame";
@@ -43,6 +44,9 @@ void fillTask(Stage* initial_stage, std::string obj) {
     pipeline->setTimeout(8.0);
     pipeline->setPlannerId("RRTConnectkConfigDefault");
 
+    auto cartesian_solver_ = std::make_shared<solvers::CartesianPath>();
+    cartesian_solver_->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
+
     // connect to pick
     stages::Connect::GroupPlannerVector planners = {{eef_left, pipeline}, {arm_left, pipeline}};
     auto connect = std::make_unique<stages::Connect>("connect", planners);
@@ -52,13 +56,13 @@ void fillTask(Stage* initial_stage, std::string obj) {
     auto simple_grasp = std::make_unique<stages::SimpleGrasp>("grasp right");
     simple_grasp->setGraspPose("close");
     simple_grasp->setProperty("eef", eef_right);
-    simple_grasp->setProperty("object", obj);
+    simple_grasp->setProperty("object", object_name);
 
     // outer grasp generator
     auto outer_grasp = std::make_unique<stages::SimpleGrasp>("grasp left");
     outer_grasp->setGraspPose("close");
     outer_grasp->setProperty("eef", eef_left);
-    outer_grasp->setProperty("object", obj);
+    outer_grasp->setProperty("object", object_name);
 
     {
         auto gengrasp = std::make_unique<stages::MirrorGraspGenerator>("generate mirror grasp pose");
@@ -66,8 +70,7 @@ void fillTask(Stage* initial_stage, std::string obj) {
 
         grasp_generator_->setAngleDelta(.2);
         grasp_generator_->setMonitoredStage(initial_stage);
-        grasp_generator_->setObject(obj);
-        grasp_generator_->setEndEffector(eef_left);
+        grasp_generator_->setObject(object_name);
         grasp_generator_->setNamedPose("open");
         grasp_generator_->setSafetyMargin(0.08);
 
@@ -105,10 +108,24 @@ void fillTask(Stage* initial_stage, std::string obj) {
         outer_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
     }
 
+    // pick container, using the generated grasp generator
+    auto pick = std::make_unique<stages::Pick>(std::move(outer_grasp));
+    pick->cartesianSolver()->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
+    pick->setProperty("eef", eef_left);
+    pick->setProperty("object", object_name);
+    geometry_msgs::TwistStamped approach;
+    approach.header.frame_id = tool_frame_left;
+    approach.twist.linear.x = 1.0;
+    approach.twist.linear.y = 1.0;
+    pick->setApproachMotion(approach, 0.03, 0.1);
 
+    geometry_msgs::TwistStamped lift;
+    lift.header.frame_id = "base_footprint";
+    lift.twist.linear.z = 1.0;
+    pick->setLiftMotion(lift, 0.03, 0.05);
 
-    task->add(std::move(connect));
-    task->add(std::move(outer_grasp));
+    pick->insert(std::move(connect), 0);
+    task->add(std::move(pick));
 
 }
 
