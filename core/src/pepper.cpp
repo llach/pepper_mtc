@@ -44,9 +44,6 @@ void fillTask(Stage* initial_stage, std::string object_name) {
     pipeline->setTimeout(8.0);
     pipeline->setPlannerId("RRTConnectkConfigDefault");
 
-    auto cartesian_solver_ = std::make_shared<solvers::CartesianPath>();
-    cartesian_solver_->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
-
     // connect to pick
     stages::Connect::GroupPlannerVector planners = {{eef_left, pipeline}, {arm_left, pipeline}};
     auto connect = std::make_unique<stages::Connect>("connect", planners);
@@ -113,16 +110,33 @@ void fillTask(Stage* initial_stage, std::string object_name) {
     pick->cartesianSolver()->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
     pick->setProperty("eef", eef_left);
     pick->setProperty("object", object_name);
-    geometry_msgs::TwistStamped approach;
-    approach.header.frame_id = tool_frame_left;
-    approach.twist.linear.x = 1.0;
-    approach.twist.linear.y = 1.0;
-    pick->setApproachMotion(approach, 0.03, 0.1);
+    geometry_msgs::TwistStamped approach_twist;
+    approach_twist.header.frame_id = tool_frame_left;
+    approach_twist.twist.linear.x = 1.0;
+    approach_twist.twist.linear.y = 1.0;
+    pick->setApproachMotion(approach_twist, 0.03, 0.1);
 
     geometry_msgs::TwistStamped lift;
     lift.header.frame_id = "base_footprint";
     lift.twist.linear.z = 1.0;
     pick->setLiftMotion(lift, 0.03, 0.05);
+
+    {
+        auto approach = std::make_unique<stages::MoveRelative>("approach object right", pick->cartesianSolver());
+        PropertyMap& p = approach->properties();
+        p.set("marker_ns", std::string("approach"));
+        approach->setGroup(arm_right);
+        approach->setLink(tool_frame_right);
+
+        geometry_msgs::TwistStamped approach_twist_right;
+        approach_twist_right.header.frame_id = tool_frame_right;
+        approach_twist_right.twist.linear.x = 1.0;
+        approach_twist_right.twist.linear.y = 1.0;
+
+        approach->along(approach_twist_right);
+        approach->setMinMaxDistance(0.03, 0.1);
+        pick->insert(std::move(approach), 0);
+    }
 
     pick->insert(std::move(connect), 0);
     task->add(std::move(pick));
