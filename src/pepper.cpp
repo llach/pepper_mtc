@@ -1,15 +1,17 @@
-
+// property map expose to --> other_name is undefined
+// simple grasp inherits group from pick. how
 #include <moveit/task_constructor/task.h>
 
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/generate_pose.h>
+#include <moveit/task_constructor/stages/simple_grasp.h>
 #include <moveit/task_constructor/stages/pick.h>
 #include <moveit/task_constructor/stages/compute_ik.h>
 #include <moveit/task_constructor/stages/connect.h>
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
 #include <moveit/task_constructor/solvers/cartesian_path.h>
 
-#include <stages/simple_mirror_grasp.h>
+#include <stages/mirror_grasp_generator.h>
 
 #include <ros/ros.h>
 #include <moveit_msgs/CollisionObject.h>
@@ -21,14 +23,15 @@
 
 using namespace moveit::task_constructor;
 
-
 std::shared_ptr<Task> task_ptr_;
 
-void fill(ParallelContainerBase &container, Stage* initial_stage, bool right_side, std::string obj) {
+void fillTask(Stage* initial_stage, bool right_side, std::string obj) {
     std::string side = right_side ? "right" : "left";
     std::string tool_frame = side.substr(0,1) + "_grasp_frame";
     std::string eef = side + "_hand";
     std::string arm = side + "_arm";
+
+    auto task = task_ptr_.get();
 
     // planner used for connect
     auto pipeline = std::make_shared<solvers::PipelinePlanner>();
@@ -41,37 +44,53 @@ void fill(ParallelContainerBase &container, Stage* initial_stage, bool right_sid
     connect->properties().configureInitFrom(Stage::PARENT);
 
     // grasp generator
-    auto grasp_generator = std::make_unique<stages::SimpleMirrorGrasp>();
+    auto simple_grasp = std::make_unique<stages::SimpleGrasp>();
+    simple_grasp->setGraspPose("close");
+    simple_grasp->setProperty("eef", eef);
+    simple_grasp->setProperty("object", obj);
 
-    if (right_side)
-        grasp_generator->setToolToGraspTF(Eigen::Translation3d(0.0,0.03,0.0), tool_frame);
-    else
-        grasp_generator->setToolToGraspTF(Eigen::Translation3d(0.005,0.035,0.0) *
-                                          Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()), tool_frame);
+    {
+        auto gengrasp = std::make_unique<stages::MirrorGraspGenerator>("generate mirror grasp pose");
+        auto grasp_generator_ = gengrasp.get();
 
-    grasp_generator->setAngleDelta(.2);
-    grasp_generator->setPreGraspPose("open");
-    grasp_generator->setGraspPose("close");
-    grasp_generator->setMonitoredStage(initial_stage);
+        grasp_generator_->setAngleDelta(.2);
+        grasp_generator_->setMonitoredStage(initial_stage);
+        grasp_generator_->setObject(obj);
+        grasp_generator_->setEndEffector(eef);
+        grasp_generator_->setNamedPose("open");
+        grasp_generator_->setSafetyMargin(0.1   );
 
-    // pick container, using the generated grasp generator
-    auto pick = std::make_unique<stages::Pick>(std::move(grasp_generator), side);
-    pick->cartesianSolver()->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
-    pick->setProperty("eef", eef);
-    pick->setProperty("object", obj);
-    geometry_msgs::TwistStamped approach;
-    approach.header.frame_id = tool_frame;
-    approach.twist.linear.x = 1.0;
-    approach.twist.linear.y = 1.0;
-    pick->setApproachMotion(approach, 0.03, 0.1);
+        const std::initializer_list<std::string>& grasp_prop_names = {"pregrasp", "object", "angle_delta"};
+        std::set<std::string> forward_properties = {"target_pose_left", "target_pose_right"};
 
-    geometry_msgs::TwistStamped lift;
-    lift.header.frame_id = "base_link";
-    lift.twist.linear.z = 1.0;
-    pick->setLiftMotion(lift, 0.03, 0.05);
 
-    pick->insert(std::move(connect), 0);
-    container.insert(std::move(pick));
+        auto ik_inner = std::make_unique<stages::ComputeIK>("compute ik right", std::move(gengrasp));
+        ik_inner->exposePropertiesOfChild(0, grasp_prop_names);
+        ik_inner->setEndEffector("right_hand");
+        ik_inner->properties().property("target_pose").configureInitFrom(Stage::INTERFACE, "target_pose_right");
+        ik_inner->setIKFrame(Eigen::Translation3d(0.0,0.03,0.0), "r_grasp_frame");
+
+        ik_inner->setProperty("forward_properties", forward_properties);
+
+        auto ik_outer = std::make_unique<stages::ComputeIK>("compute ik left", std::move(ik_inner));
+        ik_outer->exposePropertiesOfChild(0, grasp_prop_names);
+        ik_outer->setEndEffector("left_hand");
+        ik_outer->properties().property("target_pose").configureInitFrom(Stage::INTERFACE, "target_pose_left");
+        ik_outer->setIKFrame(Eigen::Translation3d(0.005,0.035,0.0) *
+                             Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()) *
+                             Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ()), "l_grasp_frame");
+
+
+        simple_grasp->remove(0);
+        simple_grasp->insert(std::move(ik_outer), 0);
+
+        simple_grasp->exposePropertiesOfChild(0, grasp_prop_names);
+        simple_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
+    }
+
+    task->add(std::move(connect));
+    task->add(std::move(simple_grasp));
+
 }
 
 bool runTask(pepper_mtc::PepperGrasping::Request  &req,
@@ -86,13 +105,10 @@ bool runTask(pepper_mtc::PepperGrasping::Request  &req,
         Stage* initial_stage = nullptr;
         auto initial = std::make_unique<stages::CurrentState>();
         initial_stage = initial.get();
+
         task->add(std::move(initial));
 
-        auto parallel = std::make_unique<Alternatives>();
-        fill(*parallel, initial_stage, true, req.object);
-        //fill(*parallel, initial_stage, false, req.object);
-
-        task->add(std::move(parallel));
+        fillTask(initial_stage, false, req.object);
 
         task->plan();
     }

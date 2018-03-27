@@ -55,8 +55,10 @@ MirrorGraspGenerator::MirrorGraspGenerator(const std::string& name)
     p.declare<std::string>("eef", "name of end-effector");
     p.declare<std::string>("pregrasp", "name of end-effector's pregrasp pose");
     p.declare<std::string>("object");
-    p.declare<geometry_msgs::TransformStamped>("tool_to_grasp_tf", geometry_msgs::TransformStamped(), "transform from robot tool frame to grasp frame");
+    p.declare<geometry_msgs::TransformStamped>("ik_frame_left", geometry_msgs::TransformStamped(), "transform from robot tool frame to left grasp frame");
+    p.declare<geometry_msgs::TransformStamped>("ik_frame_right", geometry_msgs::TransformStamped(), "transform from robot tool frame to right grasp frame");
     p.declare<double>("angle_delta", 0.1, "angular steps (rad)");
+    p.declare<double>("safety_margin", 0.01, "distance between origin of grasp pose and object surface (cm)");
 }
 
 
@@ -72,20 +74,37 @@ void MirrorGraspGenerator::setObject(const std::string &object){
     setProperty("object", object);
 }
 
-void MirrorGraspGenerator::setToolToGraspTF(const geometry_msgs::TransformStamped &transform){
-    setProperty("tool_to_grasp_tf", transform);
+void MirrorGraspGenerator::setIKFrameLeft(const geometry_msgs::TransformStamped &transform){
+    setProperty("ik_frame_left", transform);
 }
 
-void MirrorGraspGenerator::setToolToGraspTF(const Eigen::Affine3d &transform, const std::string &link){
+void MirrorGraspGenerator::setIKFrameLeft(const Eigen::Affine3d &transform, const std::string &link){
     geometry_msgs::TransformStamped stamped;
     stamped.header.frame_id = link;
     stamped.child_frame_id = "grasp_frame";
     tf::transformEigenToMsg(transform, stamped.transform);
-    setToolToGraspTF(stamped);
+    setIKFrameLeft(stamped);
 }
+
+void MirrorGraspGenerator::setIKFrameRight(const geometry_msgs::TransformStamped &transform){
+    setProperty("ik_frame_right", transform);
+}
+
+void MirrorGraspGenerator::setIKFrameRight(const Eigen::Affine3d &transform, const std::string &link){
+    geometry_msgs::TransformStamped stamped;
+    stamped.header.frame_id = link;
+    stamped.child_frame_id = "grasp_frame";
+    tf::transformEigenToMsg(transform, stamped.transform);
+    setIKFrameRight(stamped);
+}
+
 
 void MirrorGraspGenerator::setAngleDelta(double delta){
     setProperty("angle_delta", delta);
+}
+
+void MirrorGraspGenerator::setSafetyMargin(double safety_margin){
+    setProperty("safety_margin", safety_margin);
 }
 
 void MirrorGraspGenerator::onNewSolution(const moveit::task_constructor::SolutionBase& s)
@@ -100,8 +119,7 @@ bool MirrorGraspGenerator::canCompute() const {
 bool MirrorGraspGenerator::compute(){
     const auto& props = properties();
 
-    // in cm
-    double safety_distance = 0.01;
+    double safety_margin = props.get<double>("safety_margin");
 
     geometry_msgs::PoseStamped target_pose_left;
     geometry_msgs::PoseStamped target_pose_right;
@@ -111,7 +129,7 @@ bool MirrorGraspGenerator::compute(){
     planning_scene::PlanningSceneConstPtr scene = scenes_[0];
     scenes_.pop_front();
 
-    std::cout << "generating graps for " << props.get<std::string>("object") << std::endl;
+    ROS_INFO_STREAM("generating grasps for " << props.get<std::string>("object"));
 
     const std::string& object_name = props.get<std::string>("object");
     if (!scene->knowsFrameTransform(object_name))
@@ -129,22 +147,14 @@ bool MirrorGraspGenerator::compute(){
             // box->size: depth, lenght, height [x, y, z]
             std::shared_ptr<const shapes::Box> box = std::static_pointer_cast<const shapes::Box>(shape);
 
-            box->print();
-
-            std::cout << "object translation" << std::endl;
-            std::cout << object_pose.position << std::endl;
-
-            std::cout << "object rotation" << std::endl;
-            std::cout << object_pose.orientation << std::endl;
-
             target_pose_left.pose.orientation = object_pose.orientation;
             target_pose_right.pose.orientation = object_pose.orientation;
 
             double grasp_x = object_pose.position.x;
             double grasp_z = object_pose.position.z;
 
-            double grasp_y_left = object_pose.position.y + ((box->size[1] / 2) + safety_distance);
-            double grasp_y_right = object_pose.position.y - ((box->size[1] / 2) + safety_distance);
+            double grasp_y_left = object_pose.position.y + ((box->size[1] / 2) + safety_margin);
+            double grasp_y_right = object_pose.position.y - ((box->size[1] / 2) + safety_margin);
 
             target_pose_left.pose.position.x = grasp_x;
             target_pose_left.pose.position.y = grasp_y_left;
@@ -163,22 +173,14 @@ bool MirrorGraspGenerator::compute(){
         {
             std::shared_ptr<const shapes::Sphere> sphere = std::static_pointer_cast<const shapes::Sphere>(shape);
 
-            sphere->print();
-
-            std::cout << "object translation" << std::endl;
-            std::cout << object_pose.position << std::endl;
-
-            std::cout << "object rotation" << std::endl;
-            std::cout << object_pose.orientation << std::endl;
-
             target_pose_left.pose.orientation = object_pose.orientation;
             target_pose_right.pose.orientation = object_pose.orientation;
 
             double grasp_x = object_pose.position.x;
             double grasp_z = object_pose.position.z;
 
-            double grasp_y_left = object_pose.position.y + (sphere->radius + safety_distance);
-            double grasp_y_right = object_pose.position.y - (sphere->radius + safety_distance);
+            double grasp_y_left = object_pose.position.y + (sphere->radius + safety_margin);
+            double grasp_y_right = object_pose.position.y - (sphere->radius + safety_margin);
 
             target_pose_left.pose.position.x = grasp_x;
             target_pose_left.pose.position.y = grasp_y_left;
@@ -197,22 +199,14 @@ bool MirrorGraspGenerator::compute(){
         {
             std::shared_ptr<const shapes::Cylinder> cylinder = std::static_pointer_cast<const shapes::Cylinder>(shape);
 
-            cylinder->print();
-
-            std::cout << "object translation" << std::endl;
-            std::cout << object_pose.position << std::endl;
-
-            std::cout << "object rotation" << std::endl;
-            std::cout << object_pose.orientation << std::endl;
-
             target_pose_left.pose.orientation = object_pose.orientation;
             target_pose_right.pose.orientation = object_pose.orientation;
 
             double grasp_x = object_pose.position.x;
             double grasp_z = object_pose.position.z;
 
-            double grasp_y_left = object_pose.position.y + (cylinder->radius + safety_distance);
-            double grasp_y_right = object_pose.position.y - (cylinder->radius + safety_distance);
+            double grasp_y_left = object_pose.position.y + (cylinder->radius + safety_margin);
+            double grasp_y_right = object_pose.position.y - (cylinder->radius + safety_margin);
 
             target_pose_left.pose.position.x = grasp_x;
             target_pose_left.pose.position.y = grasp_y_left;
