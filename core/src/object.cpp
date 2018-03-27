@@ -4,7 +4,7 @@
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 
-#include <pepper_mtc/PepperGrasping.h>
+#include <pepper_mtc_msgs/PepperGrasping.h>
 
 void spawnObject(std::string id, int primitive_type) {
     moveit::planning_interface::PlanningSceneInterface psi;
@@ -64,7 +64,7 @@ int main(int argc, char** argv){
 
     ros::NodeHandle nh;
     ros::NodeHandle nh_private("~");
-    ros::ServiceClient client = nh.serviceClient<pepper_mtc::PepperGrasping>("pepper_grasping");
+    ros::ServiceClient client = nh.serviceClient<pepper_mtc_msgs::PepperGrasping>("pepper_grasping");
 
     int p;
     nh_private.getParam("primitive", p);
@@ -72,7 +72,7 @@ int main(int argc, char** argv){
     std::string obj = "object";
     spawnObject(obj, p);
 
-    pepper_mtc::PepperGrasping srv;
+    pepper_mtc_msgs::PepperGrasping srv;
     srv.request.object = obj;
 
     ROS_INFO_STREAM("Waiting for pepper_grasping service ...");

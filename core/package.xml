@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>pepper_mtc</name>
+  <name>pepper_mtc_core</name>
   <version>0.0.0</version>
   <description>The pepper_mtc package</description>
 
@@ -17,7 +17,7 @@
 
   <build_depend>moveit_ros_planning_interface</build_depend>
   <build_depend>moveit_task_constructor_core</build_depend>
-  <build_depend>message_generation</build_depend>
+  <build_depend>pepper_mtc_msgs</build_depend>
 
   <exec_depend>moveit_ros_planning_interface</exec_depend>
   <exec_depend>moveit_task_constructor_core</exec_depend>

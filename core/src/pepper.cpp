@@ -18,7 +18,7 @@
 #include <shape_msgs/SolidPrimitive.h>
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
-#include <pepper_mtc/PepperGrasping.h>
+#include <pepper_mtc_msgs/PepperGrasping.h>
 
 
 using namespace moveit::task_constructor;
@@ -93,8 +93,8 @@ void fillTask(Stage* initial_stage, bool right_side, std::string obj) {
 
 }
 
-bool runTask(pepper_mtc::PepperGrasping::Request  &req,
-             pepper_mtc::PepperGrasping::Response &res){
+bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
+             pepper_mtc_msgs::PepperGrasping::Response &res){
 
     task_ptr_.reset();
     task_ptr_.reset(new Task());

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(pepper_mtc)
+project(pepper_mtc_core)
 
 if ("${CMAKE_VERSION}" VERSION_LESS "3.1")
         add_compile_options(-std=c++14)
@@ -14,19 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
         moveit_task_constructor_core
         rviz_marker_tools
         roslaunch
-        std_msgs
-)
-
-## Generate services in the 'srv' folder
-add_service_files(
-   FILES
-   PepperGrasping.srv
-)
-
-## Generate added messages and services with any dependencies listed here
-generate_messages(
-   DEPENDENCIES
-   std_msgs  # Or other packages containing msgs
+        pepper_mtc_msgs
 )
 
 ##################
