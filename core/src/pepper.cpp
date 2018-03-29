@@ -45,7 +45,8 @@ void fillTask(Stage* initial_stage, std::string object_name) {
     pipeline->setPlannerId("RRTConnectkConfigDefault");
 
     // connect to pick
-    stages::Connect::GroupPlannerVector planners = {{eef_left, pipeline}, {arm_left, pipeline}};
+    stages::Connect::GroupPlannerVector planners = {{eef_left, pipeline}, {arm_left, pipeline},
+                                                    {eef_right, pipeline}, {arm_right, pipeline}};
     auto connect = std::make_unique<stages::Connect>("connect", planners);
     connect->properties().configureInitFrom(Stage::PARENT);
 
