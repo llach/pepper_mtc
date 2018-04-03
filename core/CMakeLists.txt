@@ -47,4 +47,7 @@ target_link_libraries(pepper ${catkin_LIBRARIES} ${PROJECT_NAME}_stages)
 add_executable(object src/object.cpp)
 target_link_libraries(object ${catkin_LIBRARIES})
 
+add_executable(merger src/merger.cpp)
+target_link_libraries(merger ${catkin_LIBRARIES})
+
 install(DIRECTORY include/ DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION})
