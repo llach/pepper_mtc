@@ -89,6 +89,8 @@ private:
     double z_min_, z_max_, z_current_;
     double x_min_, x_max_, x_current_;
 
+    std::string object_;
+
 };
 
 } } }

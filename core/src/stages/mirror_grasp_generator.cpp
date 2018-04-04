@@ -134,17 +134,15 @@ bool MirrorGraspGenerator::compute(){
 
     ROS_INFO_STREAM("generating grasps for " << props.get<std::string>("object"));
 
-    const std::string& object_name = props.get<std::string>("object");
-    if (!scene->knowsFrameTransform(object_name))
+    object_ = props.get<std::string>("object");
+    if (!scene->knowsFrameTransform(object_))
         throw std::runtime_error("requested object does not exist or could not be retrieved");
-    const Eigen::Affine3d object_pose_eigen = scene->getFrameTransform(object_name);
+    const Eigen::Affine3d object_pose_eigen = scene->getFrameTransform(object_);
 
     geometry_msgs::Pose object_pose;
     tf::poseEigenToMsg(object_pose_eigen, object_pose);
 
-    shapes::ShapeConstPtr shape = scene->getWorld()->getObject(object_name)->shapes_.front();
-
-    double grasp_x = object_pose.position.x;
+    shapes::ShapeConstPtr shape = scene->getWorld()->getObject(object_)->shapes_.front();
 
     double grasp_y_left;
     double grasp_y_right;
@@ -155,15 +153,15 @@ bool MirrorGraspGenerator::compute(){
             // box->size: depth, lenght, height [x, y, z]
             std::shared_ptr<const shapes::Box> box = std::static_pointer_cast<const shapes::Box>(shape);
 
-            grasp_y_left = object_pose.position.y + ((box->size[1] / 2) + safety_margin);
-            grasp_y_right = object_pose.position.y - ((box->size[1] / 2) + safety_margin);
+            grasp_y_left = ((box->size[1] / 2) + safety_margin);
+            grasp_y_right = - ((box->size[1] / 2) + safety_margin);
 
-            x_min_ = object_pose.position.x - (box->size[0] / 2);
-            x_max_ = object_pose.position.x + (box->size[0] / 2);
+            x_min_ = - (box->size[0] / 2);
+            x_max_ = (box->size[0] / 2);
             x_current_ = x_min_;
 
-            z_min_ = object_pose.position.z - (box->size[2] / 2) + (hand_height / 2);
-            z_max_ = object_pose.position.z + (box->size[2] / 2) - (hand_height / 2);
+            z_min_ = - (box->size[2] / 2) + (hand_height / 2);
+            z_max_ = (box->size[2] / 2) - (hand_height / 2);
             z_current_ = z_min_;
 
             break;
@@ -172,23 +170,21 @@ bool MirrorGraspGenerator::compute(){
         {
             std::shared_ptr<const shapes::Sphere> sphere = std::static_pointer_cast<const shapes::Sphere>(shape);
 
-            grasp_y_left = object_pose.position.y + (sphere->radius + safety_margin);
-            grasp_y_right = object_pose.position.y - (sphere->radius + safety_margin);
+            grasp_y_left = (sphere->radius + safety_margin);
+            grasp_y_right = - (sphere->radius + safety_margin);
 
-            double grasp_z = object_pose.position.z;
-
-            spawnPoses(grasp_x, grasp_z, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
+            spawnPoses(0, 0, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
             return true;
         }
         case(shapes::ShapeType::CYLINDER):
         {
             std::shared_ptr<const shapes::Cylinder> cylinder = std::static_pointer_cast<const shapes::Cylinder>(shape);
 
-            grasp_y_left = object_pose.position.y + (cylinder->radius + safety_margin);
-            grasp_y_right = object_pose.position.y - (cylinder->radius + safety_margin);
+            grasp_y_left = (cylinder->radius + safety_margin);
+            grasp_y_right = - (cylinder->radius + safety_margin);
 
-            z_min_ = object_pose.position.z - (cylinder->length / 2) + (hand_height / 2);
-            z_max_ = object_pose.position.z + (cylinder->length / 2) - (hand_height / 2);
+            z_min_ = - (cylinder->length / 2) + (hand_height / 2);
+            z_max_ = (cylinder->length / 2) - (hand_height / 2);
             z_current_ = z_min_;
 
             break;
@@ -210,7 +206,7 @@ bool MirrorGraspGenerator::compute(){
             }
             x_current_ = x_min_;
         } else {
-            spawnPoses(grasp_x, z_current_, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
+            spawnPoses(0, z_current_, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
         }
 
         z_current_ += linear_z_step;
@@ -236,8 +232,8 @@ void MirrorGraspGenerator::spawnPoses(double x, double z, double y_left, double 
     target_pose_right.pose.position.y = y_right;
     target_pose_right.pose.position.z = z;
 
-    target_pose_left.header.frame_id = "base_footprint";
-    target_pose_right.header.frame_id = "base_footprint";
+    target_pose_left.header.frame_id = object_;
+    target_pose_right.header.frame_id = object_;
 
     moveit::task_constructor::InterfaceState state(scene);
     state.properties().set("target_pose_right", target_pose_right);
