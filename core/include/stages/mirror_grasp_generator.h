@@ -47,10 +47,13 @@ namespace moveit { namespace task_constructor { namespace stages {
 
 class MirrorGraspGenerator : public moveit::task_constructor::MonitoringGenerator {
 public:
-    MirrorGraspGenerator(const std::string& name);
+    MirrorGraspGenerator(const std::string& name = "mirror grasp generator");
 
     bool canCompute() const override;
     bool compute() override;
+
+    void spawnPoses(double x, double z, double y_left, double y_right,
+                    geometry_msgs::Quaternion orientation, planning_scene::PlanningSceneConstPtr scene);
 
 
     void setEndEffector(const std::string &eef);
@@ -81,6 +84,11 @@ protected:
     void onNewSolution(const moveit::task_constructor::SolutionBase& s) override;
 
     std::deque<planning_scene::PlanningSceneConstPtr> scenes_;
+
+private:
+    double z_min_, z_max_, z_current_;
+    double x_min_, x_max_, x_current_;
+
 };
 
 } } }

@@ -1,5 +1,3 @@
-// property map expose to --> other_name is undefined
-// simple grasp inherits group from pick. how
 #include <moveit/task_constructor/task.h>
 
 #include <moveit/task_constructor/stages/current_state.h>
@@ -70,7 +68,7 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         grasp_generator_->setMonitoredStage(initial_stage);
         grasp_generator_->setObject(object_name);
         grasp_generator_->setNamedPose("open");
-        grasp_generator_->setSafetyMargin(0.08);
+        grasp_generator_->setSafetyMargin(0.02);
 
         const std::initializer_list<std::string>& grasp_prop_names = {"pregrasp", "object", "angle_delta"};
         std::set<std::string> forward_properties = {"target_pose_left", "target_pose_right"};
