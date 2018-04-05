@@ -57,13 +57,14 @@ MirrorGraspGenerator::MirrorGraspGenerator(const std::string& name)
     p.declare<std::string>("object");
     p.declare<geometry_msgs::TransformStamped>("ik_frame_left", geometry_msgs::TransformStamped(), "transform from robot tool frame to left grasp frame");
     p.declare<geometry_msgs::TransformStamped>("ik_frame_right", geometry_msgs::TransformStamped(), "transform from robot tool frame to right grasp frame");
-    p.declare<double>("angle_delta", 0.1, "angular steps (rad)");
-    p.declare<double>("safety_margin", 0.01, "distance between origin of grasp pose and object surface (cm)");
 
-
+    p.declare<double>("y_offset", 0.01, "distance between origin of grasp pose and object surface (cm)");
     p.declare<double>("hand_height", 0.04, "height of hand needed to avoid grasps above the object");
+
+    p.declare<double>("angle_delta", 0.1, "angular steps (rad)");
     p.declare<double>("linear_z_step", 0.01, "distance between grasp poses on z axis");
     p.declare<double>("linear_x_step", 0.01, "distance between grasp poses on x axis");
+
 }
 
 
@@ -108,8 +109,12 @@ void MirrorGraspGenerator::setAngleDelta(double delta){
     setProperty("angle_delta", delta);
 }
 
-void MirrorGraspGenerator::setSafetyMargin(double safety_margin){
-    setProperty("safety_margin", safety_margin);
+void MirrorGraspGenerator::setYOffset(double y_offset){
+    setProperty("y_offset", y_offset);
+}
+
+void MirrorGraspGenerator::setHandHeight(const double &hand_height) {
+    setProperty("hand_height", hand_height);
 }
 
 void MirrorGraspGenerator::onNewSolution(const moveit::task_constructor::SolutionBase& s)
@@ -124,7 +129,7 @@ bool MirrorGraspGenerator::canCompute() const {
 bool MirrorGraspGenerator::compute(){
     const auto& props = properties();
 
-    double safety_margin = props.get<double>("safety_margin");
+    double y_offset = props.get<double>("y_offset");
     double hand_height = props.get<double>("hand_height");
 
     if(scenes_.empty()) throw std::runtime_error("MirrorGraspGenerator called without checking canCompute.");
@@ -144,8 +149,8 @@ bool MirrorGraspGenerator::compute(){
 
     shapes::ShapeConstPtr shape = scene->getWorld()->getObject(object_)->shapes_.front();
 
-    double grasp_y_left;
-    double grasp_y_right;
+    double y_left;
+    double y_right;
 
     switch(shape->type) {
         case(shapes::ShapeType::BOX):
@@ -153,8 +158,8 @@ bool MirrorGraspGenerator::compute(){
             // box->size: depth, lenght, height [x, y, z]
             std::shared_ptr<const shapes::Box> box = std::static_pointer_cast<const shapes::Box>(shape);
 
-            grasp_y_left = ((box->size[1] / 2) + safety_margin);
-            grasp_y_right = - ((box->size[1] / 2) + safety_margin);
+            y_left = ((box->size[1] / 2) + y_offset);
+            y_right = - ((box->size[1] / 2) + y_offset);
 
             x_min_ = - (box->size[0] / 2);
             x_max_ = (box->size[0] / 2);
@@ -164,28 +169,72 @@ bool MirrorGraspGenerator::compute(){
             z_max_ = (box->size[2] / 2) - (hand_height / 2);
             z_current_ = z_min_;
 
+            while (z_current_ < z_max_) {
+                    while (x_current_ < x_max_) {
+                        Eigen::Affine3d target_pose_left(Eigen::Translation3d(x_current_, y_left, z_current_));
+                        Eigen::Affine3d target_pose_right(Eigen::Translation3d(x_current_, y_right, z_current_));
+
+                        x_current_ += props.get<double>("linear_x_step");
+
+                        spawnPoses(target_pose_right, target_pose_left, scene);
+                    }
+                x_current_ = x_min_;
+                z_current_ += props.get<double>("linear_z_step");
+            }
+
             break;
         }
         case(shapes::ShapeType::SPHERE):
         {
             std::shared_ptr<const shapes::Sphere> sphere = std::static_pointer_cast<const shapes::Sphere>(shape);
 
-            grasp_y_left = (sphere->radius + safety_margin);
-            grasp_y_right = - (sphere->radius + safety_margin);
+            y_left = (sphere->radius + y_offset);
+            y_right = - (sphere->radius + y_offset);
 
-            spawnPoses(0, 0, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
-            return true;
+            double current_angle_ = - (M_PI / 4);
+
+            while (current_angle_ < (M_PI / 4)) {
+
+                Eigen::Affine3d target_pose_left(Eigen::AngleAxisd(current_angle_, Eigen::Vector3d::UnitZ()) *
+                                                 Eigen::Translation3d(0.0, y_left, 0.0));
+                Eigen::Affine3d target_pose_right(Eigen::AngleAxisd(current_angle_, Eigen::Vector3d::UnitZ()) *
+                                                  Eigen::Translation3d(0.0, y_right, 0.0));
+
+                current_angle_ += props.get<double>("angle_delta");
+
+                spawnPoses(target_pose_right, target_pose_left, scene);
+            }
+
+            break;
         }
         case(shapes::ShapeType::CYLINDER):
         {
             std::shared_ptr<const shapes::Cylinder> cylinder = std::static_pointer_cast<const shapes::Cylinder>(shape);
 
-            grasp_y_left = (cylinder->radius + safety_margin);
-            grasp_y_right = - (cylinder->radius + safety_margin);
+            y_left = (cylinder->radius + y_offset);
+            y_right = - (cylinder->radius + y_offset);
 
             z_min_ = - (cylinder->length / 2) + (hand_height / 2);
             z_max_ = (cylinder->length / 2) - (hand_height / 2);
             z_current_ = z_min_;
+
+            while (z_current_ < z_max_) {
+                double current_angle_ = - (M_PI / 4);
+
+                while (current_angle_ < (M_PI / 4)) {
+
+                    Eigen::Affine3d target_pose_left(Eigen::AngleAxisd(current_angle_, Eigen::Vector3d::UnitZ()) *
+                                                     Eigen::Translation3d(0.0, y_left, z_current_));
+                    Eigen::Affine3d target_pose_right(Eigen::AngleAxisd(current_angle_, Eigen::Vector3d::UnitZ()) *
+                                                      Eigen::Translation3d(0.0, y_right, z_current_));
+
+                    current_angle_ += props.get<double>("angle_delta");
+
+                    spawnPoses(target_pose_right, target_pose_left, scene);
+                }
+
+                z_current_ += props.get<double>("linear_z_step");
+            }
 
             break;
         }
@@ -193,57 +242,31 @@ bool MirrorGraspGenerator::compute(){
             throw std::runtime_error("requested object has unsupported shape");
     }
 
-    double linear_z_step = props.get<double>("linear_z_step");
-    double linear_x_step = props.get<double>("linear_x_step");
-
-    while (z_current_ < z_max_) {
-        std::cout << "z current: " << z_current_ << std::endl;
-        if (shape->type == shapes::ShapeType::BOX) {
-            while (x_current_ < x_max_) {
-                std::cout << "x current: " << x_current_ << std::endl;
-                spawnPoses(x_current_, z_current_, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
-                x_current_ += linear_x_step;
-            }
-            x_current_ = x_min_;
-        } else {
-            spawnPoses(0, z_current_, grasp_y_left, grasp_y_right, object_pose.orientation, scene);
-        }
-
-        z_current_ += linear_z_step;
-    }
-
     return true;
 }
 
-void MirrorGraspGenerator::spawnPoses(double x, double z, double y_left, double y_right,
-                geometry_msgs::Quaternion orientation, planning_scene::PlanningSceneConstPtr scene) {
+void MirrorGraspGenerator::spawnPoses(Eigen::Affine3d right, Eigen::Affine3d left,
+                                      planning_scene::PlanningSceneConstPtr scene) {
 
-    geometry_msgs::PoseStamped target_pose_left;
-    geometry_msgs::PoseStamped target_pose_right;
+    geometry_msgs::PoseStamped target_pose_left_msg;
+    target_pose_left_msg.header.frame_id = object_;
 
-    target_pose_left.pose.orientation = orientation;
-    target_pose_right.pose.orientation = orientation;
+    geometry_msgs::PoseStamped target_pose_right_msg;
+    target_pose_right_msg.header.frame_id = object_;
 
-    target_pose_left.pose.position.x = x;
-    target_pose_left.pose.position.y = y_left;
-    target_pose_left.pose.position.z = z;
+    InterfaceState state(scene);
+    tf::poseEigenToMsg(right, target_pose_right_msg.pose);
+    state.properties().set("target_pose_right", target_pose_right_msg);
 
-    target_pose_right.pose.position.x = x;
-    target_pose_right.pose.position.y = y_right;
-    target_pose_right.pose.position.z = z;
+    tf::poseEigenToMsg(left, target_pose_left_msg.pose);
+    state.properties().set("target_pose_left", target_pose_left_msg);
 
-    target_pose_left.header.frame_id = object_;
-    target_pose_right.header.frame_id = object_;
-
-    moveit::task_constructor::InterfaceState state(scene);
-    state.properties().set("target_pose_right", target_pose_right);
-    state.properties().set("target_pose_left", target_pose_left);
-
-    moveit::task_constructor::SubTrajectory trajectory;
+    SubTrajectory trajectory;
     trajectory.setCost(0.0);
 
-    rviz_marker_tools::appendFrame(trajectory.markers(), target_pose_right, 0.1, "pose_right frame");
-    rviz_marker_tools::appendFrame(trajectory.markers(), target_pose_left, 0.1, "pose_left frame");
+    // add frame at target pose
+    rviz_marker_tools::appendFrame(trajectory.markers(), target_pose_right_msg, 0.1, "pose_right frame");
+    rviz_marker_tools::appendFrame(trajectory.markers(), target_pose_left_msg, 0.1, "pose_left frame");
 
     spawn(std::move(state), std::move(trajectory));
 }

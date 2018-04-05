@@ -52,9 +52,8 @@ public:
     bool canCompute() const override;
     bool compute() override;
 
-    void spawnPoses(double x, double z, double y_left, double y_right,
-                    geometry_msgs::Quaternion orientation, planning_scene::PlanningSceneConstPtr scene);
-
+    void spawnPoses(Eigen::Affine3d right, Eigen::Affine3d left,
+                    planning_scene::PlanningSceneConstPtr scene);
 
     void setEndEffector(const std::string &eef);
     void setNamedPose(const std::string &pose_name);
@@ -78,7 +77,8 @@ public:
 
 
     void setAngleDelta(double delta);
-    void setSafetyMargin(double safety_margin);
+    void setYOffset(double y_offset);
+    void setHandHeight(const double &hand_height);
 
 protected:
     void onNewSolution(const moveit::task_constructor::SolutionBase& s) override;
