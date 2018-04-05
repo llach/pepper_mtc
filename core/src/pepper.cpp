@@ -102,6 +102,8 @@ void fillTask(Stage* initial_stage, std::string object_name) {
 
         outer_grasp->exposePropertiesOfChild(0, grasp_prop_names);
         outer_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
+
+        outer_grasp->remove(-1);
     }
 
     // pick container, using the generated grasp generator
@@ -109,21 +111,22 @@ void fillTask(Stage* initial_stage, std::string object_name) {
     pick->cartesianSolver()->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
     pick->setProperty("eef", eef_left);
     pick->setProperty("object", object_name);
+
     geometry_msgs::TwistStamped approach_twist;
     approach_twist.header.frame_id = tool_frame_left;
     approach_twist.twist.linear.x = 1.0;
     approach_twist.twist.linear.y = 1.0;
     pick->setApproachMotion(approach_twist, 0.03, 0.1);
 
-    geometry_msgs::TwistStamped lift;
-    lift.header.frame_id = "base_footprint";
-    lift.twist.linear.z = 1.0;
-    pick->setLiftMotion(lift, 0.03, 0.05);
+    std::map<std::string, double> left_lift_goal;
+    left_lift_goal["LShoulderPitch"] = -0.25;
+    pick->setRelativeJointSpaceGoal(left_lift_goal);
 
     {
         auto approach = std::make_unique<stages::MoveRelative>("approach object right", pick->cartesianSolver());
         PropertyMap& p = approach->properties();
         p.set("marker_ns", std::string("approach"));
+
         approach->setGroup(arm_right);
         approach->setLink(tool_frame_right);
 
@@ -135,6 +138,21 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         approach->along(approach_twist_right);
         approach->setMinMaxDistance(0.03, 0.1);
         pick->insert(std::move(approach), 0);
+    }
+
+    {
+        auto lift = std::make_unique<stages::MoveRelative>("lift object right", pick->cartesianSolver());
+        PropertyMap& p = lift->properties();
+        p.set("marker_ns", std::string("lift"));
+
+        lift->setGroup(arm_right);
+        lift->setLink(tool_frame_right);
+
+        std::map<std::string, double> right_lift_goal;
+        right_lift_goal["RShoulderPitch"] = -0.25;
+        lift->setRelativeJointSpaceGoal(right_lift_goal);
+
+        pick->insert(std::move(lift));
     }
 
     pick->insert(std::move(connect), 0);
