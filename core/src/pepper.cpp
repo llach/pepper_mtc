@@ -3,6 +3,7 @@
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/generate_pose.h>
 #include <moveit/task_constructor/stages/move_relative.h>
+#include <moveit/task_constructor/stages/move_to.h>
 #include <moveit/task_constructor/stages/simple_grasp.h>
 #include <moveit/task_constructor/stages/pick.h>
 #include <moveit/task_constructor/stages/compute_ik.h>
@@ -68,7 +69,7 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         grasp_generator_->setMonitoredStage(initial_stage);
         grasp_generator_->setObject(object_name);
         grasp_generator_->setNamedPose("open");
-        grasp_generator_->setSafetyMargin(0.02);
+        grasp_generator_->setYOffset(0.02);
 
         const std::initializer_list<std::string>& grasp_prop_names = {"pregrasp", "object", "angle_delta"};
         std::set<std::string> forward_properties = {"target_pose_left", "target_pose_right"};
