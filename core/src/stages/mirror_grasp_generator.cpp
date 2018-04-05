@@ -67,7 +67,6 @@ MirrorGraspGenerator::MirrorGraspGenerator(const std::string& name)
 
 }
 
-
 void MirrorGraspGenerator::setEndEffector(const std::string &eef){
     setProperty("eef", eef);
 }
@@ -79,31 +78,6 @@ void MirrorGraspGenerator::setNamedPose(const std::string &pose_name){
 void MirrorGraspGenerator::setObject(const std::string &object){
     setProperty("object", object);
 }
-
-void MirrorGraspGenerator::setIKFrameLeft(const geometry_msgs::TransformStamped &transform){
-    setProperty("ik_frame_left", transform);
-}
-
-void MirrorGraspGenerator::setIKFrameLeft(const Eigen::Affine3d &transform, const std::string &link){
-    geometry_msgs::TransformStamped stamped;
-    stamped.header.frame_id = link;
-    stamped.child_frame_id = "grasp_frame";
-    tf::transformEigenToMsg(transform, stamped.transform);
-    setIKFrameLeft(stamped);
-}
-
-void MirrorGraspGenerator::setIKFrameRight(const geometry_msgs::TransformStamped &transform){
-    setProperty("ik_frame_right", transform);
-}
-
-void MirrorGraspGenerator::setIKFrameRight(const Eigen::Affine3d &transform, const std::string &link){
-    geometry_msgs::TransformStamped stamped;
-    stamped.header.frame_id = link;
-    stamped.child_frame_id = "grasp_frame";
-    tf::transformEigenToMsg(transform, stamped.transform);
-    setIKFrameRight(stamped);
-}
-
 
 void MirrorGraspGenerator::setAngleDelta(double delta){
     setProperty("angle_delta", delta);
@@ -152,6 +126,7 @@ bool MirrorGraspGenerator::compute(){
     double y_left;
     double y_right;
 
+    // based on object shape grasp pose pairs are generated
     switch(shape->type) {
         case(shapes::ShapeType::BOX):
         {

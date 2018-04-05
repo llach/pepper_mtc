@@ -59,23 +59,6 @@ public:
     void setNamedPose(const std::string &pose_name);
     void setObject(const std::string &object);
 
-    void setIKFrameLeft(const geometry_msgs::TransformStamped &transform);
-    void setIKFrameLeft(const Eigen::Affine3d& transform, const std::string& link = "");
-    template <typename T>
-    void setIKFrameLeft(const T& t, const std::string& link) {
-        Eigen::Affine3d transform; transform = t;
-        setIKFrameLeft(transform, link);
-    }
-
-    void setIKFrameRight(const geometry_msgs::TransformStamped &transform);
-    void setIKFrameRight(const Eigen::Affine3d& transform, const std::string& link = "");
-    template <typename T>
-    void setIKFrameRight(const T& t, const std::string& link) {
-        Eigen::Affine3d transform; transform = t;
-        setIKFrameRight(transform, link);
-    }
-
-
     void setAngleDelta(double delta);
     void setYOffset(double y_offset);
     void setHandHeight(const double &hand_height);
@@ -90,7 +73,6 @@ private:
     double x_min_, x_max_, x_current_;
 
     std::string object_;
-
 };
 
 } } }

@@ -23,10 +23,13 @@
 
 using namespace moveit::task_constructor;
 
+// keep global reference, so service calls from rviz plugin
+// work even after the service call task trigger is done
 std::shared_ptr<Task> task_ptr_;
 
 void fillTask(Stage* initial_stage, std::string object_name) {
 
+    // some robot specific variables
     std::string tool_frame_left = "l_grasp_frame";
     std::string tool_frame_right = "r_grasp_frame";
 
@@ -49,40 +52,52 @@ void fillTask(Stage* initial_stage, std::string object_name) {
     auto connect = std::make_unique<stages::Connect>("connect", planners);
     connect->properties().configureInitFrom(Stage::PARENT);
 
-    // grasp generator
+    // grasp stage to be wrapped in another grasp stage
     auto simple_grasp = std::make_unique<stages::SimpleGrasp>("grasp right");
     simple_grasp->setGraspPose("close");
     simple_grasp->setProperty("eef", eef_right);
     simple_grasp->setProperty("object", object_name);
 
-    // outer grasp generator
+    // outer grasp stage
     auto outer_grasp = std::make_unique<stages::SimpleGrasp>("grasp left");
     outer_grasp->setGraspPose("close");
     outer_grasp->setProperty("eef", eef_left);
     outer_grasp->setProperty("object", object_name);
 
     {
+        // actual grasp generator for an in the origin mirrored grasp pose pair
         auto gengrasp = std::make_unique<stages::MirrorGraspGenerator>("generate mirror grasp pose");
         auto grasp_generator_ = gengrasp.get();
 
+        // parameter for the grasp generator
         grasp_generator_->setAngleDelta(.2);
         grasp_generator_->setMonitoredStage(initial_stage);
         grasp_generator_->setObject(object_name);
         grasp_generator_->setNamedPose("open");
         grasp_generator_->setYOffset(0.02);
 
+        // properties to be exposed to ik stage
         const std::initializer_list<std::string>& grasp_prop_names = {"pregrasp", "object", "angle_delta"};
+
+        // properties for the ik stage to inherit via interface
         std::set<std::string> forward_properties = {"target_pose_left", "target_pose_right"};
 
-
+        // ik solver that wraps the grasp generator
         auto ik_inner = std::make_unique<stages::ComputeIK>("compute ik right", std::move(gengrasp));
+
+        // inherit properties form child
         ik_inner->exposePropertiesOfChild(0, grasp_prop_names);
         ik_inner->setEndEffector(eef_right);
+
+        // map interface property to ik stage specific target pose property
         ik_inner->properties().property("target_pose").configureInitFrom(Stage::INTERFACE, "target_pose_right");
         ik_inner->setIKFrame(Eigen::Translation3d(0.0,0.03,0.0), "r_grasp_frame");
 
+        // inner ik needs to forward properties via interface
+        // in order for the outer ik stage to access them
         ik_inner->setProperty("forward_properties", forward_properties);
 
+        // outer ik stage to solve for the opposing target pose
         auto ik_outer = std::make_unique<stages::ComputeIK>("compute ik left", std::move(ik_inner));
         ik_outer->exposePropertiesOfChild(0, grasp_prop_names);
         ik_outer->setEndEffector(eef_left);
@@ -92,37 +107,46 @@ void fillTask(Stage* initial_stage, std::string object_name) {
                              Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ()), "l_grasp_frame");
 
 
+        // from the inner grasp stage, replace the default
+        // ik & graspgen pair with the double ik & mirror grasp gen
         simple_grasp->remove(0);
         simple_grasp->insert(std::move(ik_outer), 0);
 
         simple_grasp->exposePropertiesOfChild(0, grasp_prop_names);
         simple_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
 
+        // in the outer grasp stage, replace the first container
+        // with the inner grasp stage
         outer_grasp->remove(0);
         outer_grasp->insert(std::move(simple_grasp), 0);
 
         outer_grasp->exposePropertiesOfChild(0, grasp_prop_names);
         outer_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
 
+        // removing the last child of one of
+        // the grasp stages avoids double attaching
         outer_grasp->remove(-1);
     }
 
-    // pick container, using the generated grasp generator
+    // pick handles approaching and lifting the object
     auto pick = std::make_unique<stages::Pick>(std::move(outer_grasp));
     pick->cartesianSolver()->setProperty("jump_threshold", 0.0); // disable jump check, see MoveIt #773
     pick->setProperty("eef", eef_left);
     pick->setProperty("object", object_name);
 
+    // define and set approach motion as a twist
     geometry_msgs::TwistStamped approach_twist;
     approach_twist.header.frame_id = tool_frame_left;
     approach_twist.twist.linear.x = 1.0;
     approach_twist.twist.linear.y = 1.0;
     pick->setApproachMotion(approach_twist, 0.03, 0.1);
 
+    // lifting is done via relative joint space goal
     std::map<std::string, double> left_lift_goal;
     left_lift_goal["LShoulderPitch"] = -0.25;
     pick->setRelativeJointSpaceGoal(left_lift_goal);
 
+    // add an approach stage for the other arm
     {
         auto approach = std::make_unique<stages::MoveRelative>("approach object right", pick->cartesianSolver());
         PropertyMap& p = approach->properties();
@@ -141,6 +165,7 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         pick->insert(std::move(approach), 0);
     }
 
+    // add a lift stage for the other arm
     {
         auto lift = std::make_unique<stages::MoveRelative>("lift object right", pick->cartesianSolver());
         PropertyMap& p = lift->properties();
@@ -156,7 +181,10 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         pick->insert(std::move(lift));
     }
 
+    // connect will fill the gap to the current state
     pick->insert(std::move(connect), 0);
+
+    // finally, add the pick container to the task
     task->add(std::move(pick));
 
 }
@@ -164,18 +192,21 @@ void fillTask(Stage* initial_stage, std::string object_name) {
 bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
              pepper_mtc_msgs::PepperGrasping::Response &res){
 
+    // delete old task, create new one
     task_ptr_.reset();
     task_ptr_.reset(new Task());
 
     auto task = task_ptr_.get();
 
     try {
+        // start from the current state
         Stage* initial_stage = nullptr;
         auto initial = std::make_unique<stages::CurrentState>();
         initial_stage = initial.get();
 
         task->add(std::move(initial));
 
+        // fill task with bidextral pipeline
         fillTask(initial_stage, req.object);
 
         task->plan();
@@ -197,6 +228,7 @@ int main(int argc, char** argv){
     std::cout << "... and we're spinning in the main thread!" << std::endl;
     ros::ServiceServer server = n.advertiseService("pepper_grasping", runTask);
 
+    // needed to also ensure that in task encapsuled service calls work
     ros::MultiThreadedSpinner().spin();
 
     return 0;
