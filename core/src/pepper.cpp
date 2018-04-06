@@ -115,6 +115,9 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         simple_grasp->exposePropertiesOfChild(0, grasp_prop_names);
         simple_grasp->exposePropertiesOfChild(0, { "max_ik_solutions", "timeout", "ik_frame" });
 
+        // also remove close gripper
+        simple_grasp->remove(-2);
+
         // in the outer grasp stage, replace the first container
         // with the inner grasp stage
         outer_grasp->remove(0);
@@ -125,6 +128,9 @@ void fillTask(Stage* initial_stage, std::string object_name) {
 
         // removing the last child of one of
         // the grasp stages avoids double attaching
+        outer_grasp->remove(-1);
+
+        // also remove close gripper
         outer_grasp->remove(-1);
     }
 
