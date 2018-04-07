@@ -50,4 +50,8 @@ target_link_libraries(object ${catkin_LIBRARIES})
 add_executable(merger src/merger.cpp)
 target_link_libraries(merger ${catkin_LIBRARIES})
 
+install(TARGETS pepper object
+        DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 install(DIRECTORY include/ DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION})
