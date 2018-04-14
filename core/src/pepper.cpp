@@ -171,9 +171,28 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         pick->insert(std::move(approach), 0);
     }
 
+    auto merger = std::make_unique<Merger>("lift");
+
+    // add a lift stage for the one arm
+    {
+        auto lift = std::make_unique<stages::MoveRelative>("lift left", pick->cartesianSolver());
+        PropertyMap& p = lift->properties();
+        p.set("marker_ns", std::string("lift"));
+
+        lift->setGroup(arm_left);
+        lift->setLink(tool_frame_left);
+
+        std::map<std::string, double> left_lift_goal;
+        left_lift_goal["LShoulderPitch"] = -0.25;
+        lift->setRelativeJointSpaceGoal(left_lift_goal);
+
+        lift->restrictDirection(stages::MoveRelative::FORWARD);
+        merger->insert(std::move(lift));
+    }
+
     // add a lift stage for the other arm
     {
-        auto lift = std::make_unique<stages::MoveRelative>("lift object right", pick->cartesianSolver());
+        auto lift = std::make_unique<stages::MoveRelative>("lift right", pick->cartesianSolver());
         PropertyMap& p = lift->properties();
         p.set("marker_ns", std::string("lift"));
 
@@ -184,8 +203,12 @@ void fillTask(Stage* initial_stage, std::string object_name) {
         right_lift_goal["RShoulderPitch"] = -0.25;
         lift->setRelativeJointSpaceGoal(right_lift_goal);
 
-        pick->insert(std::move(lift));
+        lift->restrictDirection(stages::MoveRelative::FORWARD);
+        merger->insert(std::move(lift));
     }
+
+    pick->remove(-1);
+   pick->insert(std::move(merger));
 
     // connect will fill the gap to the current state
     pick->insert(std::move(connect), 0);
