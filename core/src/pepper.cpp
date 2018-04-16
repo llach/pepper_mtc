@@ -11,6 +11,10 @@
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
 #include <moveit/task_constructor/solvers/cartesian_path.h>
 
+#include <actionlib/client/simple_action_client.h>
+#include <actionlib/client/terminal_state.h>
+#include <control_msgs/FollowJointTrajectoryAction.h>
+
 #include <stages/mirror_grasp_generator.h>
 
 #include <ros/ros.h>
@@ -26,6 +30,7 @@ using namespace moveit::task_constructor;
 // keep global reference, so service calls from rviz plugin
 // work even after the service call task trigger is done
 std::shared_ptr<Task> task_ptr_;
+std::shared_ptr<actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>> action_client_ptr;
 
 void fillTask(Stage* initial_stage, std::string object_name) {
 
@@ -215,6 +220,7 @@ bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
         // fill task with bidextral pipeline
         fillTask(initial_stage, req.object);
 
+        // is blocking
         task->plan();
     }
     catch (const InitStageException &e) {
@@ -222,6 +228,33 @@ bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
         res.success = false;
         return false;
     }
+
+    moveit_task_constructor_msgs::Solution msg;
+    Stage::SolutionProcessor processor = [&msg](const SolutionBase& s) {
+        s.fillMessage(msg);
+        return false;
+    };
+
+    task->processSolutions(processor);
+
+    for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
+        trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
+        control_msgs::FollowJointTrajectoryGoal goal;
+        goal.trajectory = trajectory;
+        action_client_ptr->sendGoal(goal);
+        bool finnished_before_timeout = action_client_ptr->waitForResult(ros::Duration(120.0));
+        if(finnished_before_timeout){
+            actionlib::SimpleClientGoalState state = action_client_ptr->getState();
+            ROS_INFO("Action finished: %s",state.toString().c_str());
+        }
+        else{
+            ROS_INFO("Action did not finish before the time out. Cancelling pipeline");
+            action_client_ptr->cancelGoal();
+            break;
+        }
+
+    }
+
 
     res.success = true;
     return true;
@@ -231,6 +264,18 @@ int main(int argc, char** argv){
     ros::init(argc, argv, "grasping");
 
     ros::NodeHandle n;
+
+    std::string action_topic = "/pepper_dcm/LeftArm_controller/follow_joint_trajectory";
+    // create the action client
+    // true causes the client to spin its own thread
+    action_client_ptr.reset(new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>(action_topic, true));
+
+    ROS_INFO("Waiting for action server to start.");
+    // wait for the action server to start
+    action_client_ptr->waitForServer(); //will wait for infinite time
+
+    ROS_INFO("action_server found.");
+
     std::cout << "... and we're spinning in the main thread!" << std::endl;
     ros::ServiceServer server = n.advertiseService("pepper_grasping", runTask);
 
