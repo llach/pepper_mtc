@@ -256,7 +256,7 @@ int main(int argc, char** argv){
 
     ros::NodeHandle n;
 
-    std::string action_topic = "/pepper_dcm/LeftArm_controller/follow_joint_trajectory";
+    std::string action_topic = "/pepper_robot/motion_control/LeftArm/follow_joint_trajectory";
     // create the action client
     // true causes the client to spin its own thread
     action_client_ptr.reset(new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>(action_topic, true));
