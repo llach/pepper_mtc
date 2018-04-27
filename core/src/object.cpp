@@ -11,12 +11,16 @@ void spawnObject(std::string id, int primitive_type) {
 
     moveit_msgs::CollisionObject o;
     o.id= id;
-    o.header.frame_id= "odom";
+    o.header.frame_id= "base_footprint";
     o.primitive_poses.resize(1);
     o.primitive_poses[0].position.x = 0.31;
-    o.primitive_poses[0].position.y = 0;
+    o.primitive_poses[0].position.y = -0.02;
     o.primitive_poses[0].position.z = 0.93;
     o.primitive_poses[0].orientation.w = 1.0;
+//    o.primitive_poses[0].position.x = 0.31;
+//    o.primitive_poses[0].position.y = 0;
+//    o.primitive_poses[0].position.z = 0.93;
+//    o.primitive_poses[0].orientation.w = 1.0;
     o.primitives.resize(1);
 
     switch(primitive_type){
@@ -63,6 +67,9 @@ void spawnObject(std::string id, int primitive_type) {
 
             o.primitives[0].type= shape_msgs::SolidPrimitive::BOX;
             o.primitives[0].dimensions.resize(3);
+            //o.primitives[0].dimensions[0]= 0.15;
+            //o.primitives[0].dimensions[1]= 0.23;
+            //o.primitives[0].dimensions[2]= 0.10;
             o.primitives[0].dimensions[0]= 0.15;
             o.primitives[0].dimensions[1]= 0.23;
             o.primitives[0].dimensions[2]= 0.10;

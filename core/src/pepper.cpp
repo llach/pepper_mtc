@@ -27,7 +27,7 @@
 #include <eigen_conversions/eigen_msg.h>
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
-#include <pepper_mtc_msgs/PepperGrasping.h>
+#include <pepper_mtc_msgs/PepperFindGraspPlan.h>
 
 
 using namespace moveit::task_constructor;
@@ -35,7 +35,9 @@ using namespace moveit::task_constructor;
 // keep global reference, so service calls from rviz plugin
 // work even after the service call task trigger is done
 std::shared_ptr<Task> task_ptr_;
+
 std::shared_ptr<actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>> action_client_ptr;
+std::shared_ptr<ros::Publisher> plan_pub;
 
 
 std::shared_ptr<Task> createTask(const std::string& object = "object") {
@@ -155,7 +157,8 @@ std::shared_ptr<Task> createTask(const std::string& object = "object") {
             move->setMinMaxDistance(0.02, 0.03);
             merger->insert(std::unique_ptr<Stage>(move));
         }
-        pick->insert(std::unique_ptr<Stage>(merger));
+       // try without close
+       // pick->insert(std::unique_ptr<Stage>(merger));
     }
 #else
     {  // close grippers
@@ -202,12 +205,12 @@ std::shared_ptr<Task> createTask(const std::string& object = "object") {
 }
 
 
-bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
-             pepper_mtc_msgs::PepperGrasping::Response &res){
+bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
+             pepper_mtc_msgs::PepperFindGraspPlan::Response &res){
 
     // delete old task, create new one
     task_ptr_.reset();
-    task_ptr_ = createTask();
+    task_ptr_ = createTask(req.object_uuid);
 
     auto task = task_ptr_.get();
 
@@ -223,6 +226,31 @@ bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
 
     task->processSolutions(processor);
 
+    plan_pub->publish(msg);
+    //VISUALIZE
+//    for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
+//        moveit_msgs::PlanningScene scene_diff = sub_traj.scene_diff;
+//        trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
+//        if(trajectory.points.empty() || trajectory.points.at(0).positions.empty()){
+//            //ROS_INFO("TRAJECTORY EMPTY");
+//        }else{
+//            plan_pub->publish(trajectory);
+//            ROS_INFO("TRAJECTORY POINTS: %i",trajectory.points.size());
+//            ROS_INFO("TRAJECTORY FIRST POS: %f",trajectory.points.at(0).positions.at(0));
+//            ROS_INFO("TRAJECTORY FIRST TIME: %f",trajectory.points.at(0).time_from_start.toSec());
+//        }
+
+//        if(!scene_diff.world.collision_objects.empty()){
+
+//            object_pub->publish(scene_diff.world.collision_objects.at(0));
+//            ROS_INFO("COLLISION_OBJECTS: %i",scene_diff.world.collision_objects);
+//            ROS_INFO("COLLISION_OBJECTS EMPTY: %i",scene_diff.world.collision_objects.empty());
+//            ROS_INFO("COLLISION_OBJECTS SIZE: %i",scene_diff.world.collision_objects.size());
+//            ROS_INFO("COLLISION_OBJECTS FIRST OP: %i",scene_diff.world.collision_objects.at(0).operation);
+//        }
+//    }
+
+    //EXECUTE
     for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
         trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
         control_msgs::FollowJointTrajectoryGoal goal;
@@ -246,7 +274,7 @@ bool runTask(pepper_mtc_msgs::PepperGrasping::Request  &req,
     }
 
 
-    res.success = true;
+    res.solutions={"1"};
     return true;
 }
 
@@ -256,10 +284,13 @@ int main(int argc, char** argv){
 
     ros::NodeHandle n;
 
+    plan_pub.reset(new ros::Publisher(n.advertise<moveit_task_constructor_msgs::Solution>("pepper_grasp_plan", 1)));
+
     std::string action_topic = "/pepper_robot/motion_control/LeftArm/follow_joint_trajectory";
     // create the action client
     // true causes the client to spin its own thread
     action_client_ptr.reset(new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>(action_topic, true));
+
 
     ROS_INFO("Waiting for action server to start.");
     // wait for the action server to start
@@ -269,6 +300,7 @@ int main(int argc, char** argv){
 
     std::cout << "... and we're spinning in the main thread!" << std::endl;
     ros::ServiceServer server = n.advertiseService("pepper_grasping", runTask);
+
 
     // needed to also ensure that in task encapsuled service calls work
     ros::MultiThreadedSpinner().spin();
