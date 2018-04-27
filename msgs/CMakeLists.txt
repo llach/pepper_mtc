@@ -10,6 +10,7 @@ endif ()
 set(CMAKE_BUILD_TYPE Debug)
 
 find_package(catkin REQUIRED COMPONENTS
+        actionlib_msgs
         std_msgs
         message_generation
 )
