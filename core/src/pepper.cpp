@@ -304,7 +304,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
 
 void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConstPtr &goal){
 
-    ROS_INFO("GOT GOAL!");
+    std::cout << "called callback" << std::endl;
     ros::Rate r(1);
     moveit_task_constructor_msgs::Solution msg = current_solutions.at(goal->goal.solution_id);
     //EXECUTE
@@ -355,6 +355,7 @@ void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConst
             break;
         }
         */
+        std::cout << "end callback" << std::endl;
     }
 }
 
