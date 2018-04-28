@@ -331,10 +331,10 @@ void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConst
         }
         if(action_client_ptr->getState().state_ == actionlib::SimpleClientGoalState::SUCCEEDED){
 
-            execute_action_server_ptr->setSucceeded(_result);
+            execute_action_server_ptr->setSucceeded(result_);
         }else{
 
-            execute_action_server_ptr->setAborted(_result);
+            execute_action_server_ptr->setAborted(result_);
         }
 
         /*
