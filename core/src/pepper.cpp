@@ -29,8 +29,10 @@
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <pepper_mtc_msgs/PepperFindGraspPlan.h>
-#include <pepper_mtc_msgs/PepperExecuteSolutionAction.h>
-#include <pepper_mtc_msgs/PepperVisualizeSolutionAction.h>
+#include <pepper_mtc_msgs/PepperExecuteSolution.h>
+//#include <pepper_mtc_msgs/PepperVisualizeSolution.h>
+//#include <pepper_mtc_msgs/PepperExecuteSolutionAction.h>
+//#include <pepper_mtc_msgs/PepperVisualizeSolutionAction.h>
 
 
 using namespace moveit::task_constructor;
@@ -39,15 +41,15 @@ using namespace moveit::task_constructor;
 // work even after the service call task trigger is done
 std::shared_ptr<Task> task_ptr_;
 
-std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>> execute_action_server_ptr;
-std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperVisualizeSolutionAction>> visualize_action_server_ptr;
+//std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>> execute_action_server_ptr;
+///std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperVisualizeSolutionAction>> visualize_action_server_ptr;
 std::shared_ptr<actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>> action_client_ptr;
 std::shared_ptr<ros::Publisher> plan_pub;
 std::map<std::string, moveit_task_constructor_msgs::Solution> current_solutions;
 
 
-pepper_mtc_msgs::PepperExecuteSolutionFeedback feedback_;
-pepper_mtc_msgs::PepperExecuteSolutionResult result_;
+//pepper_mtc_msgs::PepperExecuteSolutionFeedback feedback_;
+//pepper_mtc_msgs::PepperExecuteSolutionResult result_;
 
 
 std::shared_ptr<Task> createTask(const std::string& object = "object") {
@@ -302,6 +304,39 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
     return true;
 }
 
+
+bool execTask(pepper_mtc_msgs::PepperExecuteSolution::Request  &req,
+             pepper_mtc_msgs::PepperExecuteSolution::Response &res){
+
+    std::cout << "called callback" << std::endl;
+    ros::Rate r(1);
+    moveit_task_constructor_msgs::Solution msg = current_solutions.at(req.solution_id);
+    //EXECUTE
+    for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
+        trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
+        control_msgs::FollowJointTrajectoryGoal goal;
+        goal.trajectory = trajectory;
+        if(trajectory.points.empty()){ // subsolution is not a trajectory (e.g. a planning-scene modification)
+            continue;
+        }
+        action_client_ptr->sendGoal(goal);
+        float timeout = 30.0;
+        bool finnished_before_timeout = action_client_ptr->waitForResult(ros::Duration(timeout));
+        if(finnished_before_timeout){
+            actionlib::SimpleClientGoalState state = action_client_ptr->getState();
+            ROS_INFO("Action finished: %s",state.toString().c_str());
+            return true;
+        }
+        else{
+            ROS_INFO("Action did not finish before the time out.",std::to_string(timeout)," Cancelling pipeline");
+            action_client_ptr->cancelGoal();
+            return false;
+        }
+
+    }
+}
+
+/*
 void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConstPtr &goal){
 
     std::cout << "called callback" << std::endl;
@@ -354,11 +389,11 @@ void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConst
             execute_action_server_ptr->setAborted(_result);
             break;
         }
-        */
+        *
         std::cout << "end callback" << std::endl;
     }
 }
-
+*/
 int main(int argc, char** argv){
     ros::init(argc, argv, "grasping");
 
@@ -379,9 +414,11 @@ int main(int argc, char** argv){
     ROS_INFO("action_server found.");
 
     std::cout << "... and we're spinning in the main thread!" << std::endl;
-    ros::ServiceServer server = n.advertiseService("/pepper_grasping", runTask);
+    ros::ServiceServer plan_server = n.advertiseService("/pepper_grasping", runTask);
+    ros::ServiceServer exec_server = n.advertiseService("/pepper_grasping/exec", execTask);
+    //ros::ServiceServer vis_server = n.advertiseService("/pepper_grasping", visTask);
 
-    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", executeSolution));
+    //execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", executeSolution));
     //ROS_INFO(execute_action_server_ptr->isActive() ? "AS ACTIVE TRUE": "AS NOT ACTIVE");
 
     // needed to also ensure that in task encapsuled service calls work
