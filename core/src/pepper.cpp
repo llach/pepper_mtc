@@ -381,7 +381,7 @@ int main(int argc, char** argv){
     std::cout << "... and we're spinning in the main thread!" << std::endl;
     ros::ServiceServer server = n.advertiseService("/pepper_grasping", runTask);
 
-    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", boost::bind(&moveit::task_constructor::executeSolution), false));
+    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", executeSolution));
     //ROS_INFO(execute_action_server_ptr->isActive() ? "AS ACTIVE TRUE": "AS NOT ACTIVE");
 
     // needed to also ensure that in task encapsuled service calls work
