@@ -19,6 +19,8 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
    DIRECTORY srv
    FILES PepperFindGraspPlan.srv
+   FILES PepperExecuteSolution.srv
+   FILES PepperExecuteSolution.srv
 )
 ## Generate actions in the 'action' folder
 add_action_files(

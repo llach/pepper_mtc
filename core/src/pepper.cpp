@@ -273,7 +273,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
 //            ROS_INFO("COLLISION_OBJECTS FIRST OP: %i",scene_diff.world.collision_objects.at(0).operation);
 //        }
 //    }
-/*
+
     //EXECUTE
     for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
         trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
@@ -296,7 +296,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
         }
 
     }
-*/
+
 
     res.solutions={"1"};
     return true;
@@ -381,8 +381,8 @@ int main(int argc, char** argv){
     std::cout << "... and we're spinning in the main thread!" << std::endl;
     ros::ServiceServer server = n.advertiseService("/pepper_grasping", runTask);
 
-    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", executeSolution));
-    execute_action_server_ptr->start();
+    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", boost::bind(&moveit::task_constructor::executeSolution), false));
+    //ROS_INFO(execute_action_server_ptr->isActive() ? "AS ACTIVE TRUE": "AS NOT ACTIVE");
 
     // needed to also ensure that in task encapsuled service calls work
     ros::MultiThreadedSpinner().spin();
