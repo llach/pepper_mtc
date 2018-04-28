@@ -14,6 +14,7 @@
 #include <moveit/task_constructor/stages/connect.h>
 #include <stages/bimanual_grasp_pose.h>
 
+#include <actionlib/server/simple_action_server.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/terminal_state.h>
 #include <control_msgs/FollowJointTrajectoryAction.h>
@@ -28,6 +29,8 @@
 
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <pepper_mtc_msgs/PepperFindGraspPlan.h>
+#include <pepper_mtc_msgs/PepperExecuteSolutionAction.h>
+#include <pepper_mtc_msgs/PepperVisualizeSolutionAction.h>
 
 
 using namespace moveit::task_constructor;
@@ -36,8 +39,15 @@ using namespace moveit::task_constructor;
 // work even after the service call task trigger is done
 std::shared_ptr<Task> task_ptr_;
 
+std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>> execute_action_server_ptr;
+std::shared_ptr<actionlib::SimpleActionServer<pepper_mtc_msgs::PepperVisualizeSolutionAction>> visualize_action_server_ptr;
 std::shared_ptr<actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>> action_client_ptr;
 std::shared_ptr<ros::Publisher> plan_pub;
+std::map<std::string, moveit_task_constructor_msgs::Solution> current_solutions;
+
+
+pepper_mtc_msgs::PepperExecuteSolutionFeedback feedback_;
+pepper_mtc_msgs::PepperExecuteSolutionResult result_;
 
 
 std::shared_ptr<Task> createTask(const std::string& object = "object") {
@@ -111,12 +121,24 @@ std::shared_ptr<Task> createTask(const std::string& object = "object") {
     }
 
     {  // bimanual grasp generator
-        auto gengrasp = new stages::BimanualGraspPose();
-        gengrasp->setMonitoredStage(referenced_stage);
-        gengrasp->setObject(object);
-        gengrasp->setEndEffectorPoses({{eef_left, "open"}, {eef_right, "open"}});
+       auto gengrasp = new stages::BimanualGraspPose();
+       gengrasp->setMonitoredStage(referenced_stage);
+       gengrasp->setObject(object);
+       gengrasp->setEndEffectorPoses({{eef_left, "open"}, {eef_right, "open"}});
+/*
+        // actual grasp generator for an in the origin mirrored grasp pose pair
+        auto gengrasp = std::make_unique<stages::MirrorGraspGenerator>("generate mirror grasp pose");
+        auto grasp_generator_ = gengrasp.get();
 
+        // parameter for the grasp generator
+        grasp_generator_->setAngleDelta(.2);
+        grasp_generator_->setMonitoredStage(initial);
+        grasp_generator_->setObject(object_name);
+        grasp_generator_->setNamedPose("open");
+        grasp_generator_->setYOffset(0.02);
+*/
         // inner IK: right hand
+        //auto ik_inner = new stages::ComputeIK("compute ik right", std::unique_ptr<Stage>(gengrasp));
         auto ik_inner = new stages::ComputeIK("compute ik right", std::unique_ptr<Stage>(gengrasp));
         ik_inner->setEndEffector(eef_right);
         ik_inner->properties().property("target_pose").configureInitFrom(Stage::INTERFACE, "target_pose_right");
@@ -226,6 +248,8 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
 
     task->processSolutions(processor);
 
+    std::string s = "1";
+    current_solutions.insert(std::pair<std::string,moveit_task_constructor_msgs::Solution>(s,msg));
     plan_pub->publish(msg);
     //VISUALIZE
 //    for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
@@ -278,6 +302,57 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
     return true;
 }
 
+void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConstPtr &goal){
+
+    ros::Rate r(1);
+    moveit_task_constructor_msgs::Solution msg = current_solutions.at(goal->goal.solution_id);
+    //EXECUTE
+    for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
+        trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
+        control_msgs::FollowJointTrajectoryGoal goal;
+        goal.trajectory = trajectory;
+        if(trajectory.points.empty()){ // subsolution is not a trajectory (e.g. a planning-scene modification)
+            continue;
+        }
+        action_client_ptr->sendGoal(goal);
+        float timeout = 30.0;
+        r.sleep();
+        // TODO: NON BLOCKING WITH SLEEP, check for preempted
+        while(!action_client_ptr->getState().isDone()){
+            if(execute_action_server_ptr->isPreemptRequested()){
+                //ROS_INFO("Action did not finish successfully. Cancelling pipeline");
+                action_client_ptr->cancelGoal();
+                execute_action_server_ptr->setPreempted(result_);
+                break;
+            }else{
+
+                r.sleep();
+            }
+        }
+        if(action_client_ptr->getState().state_ == actionlib::SimpleClientGoalState::SUCCEEDED){
+
+            execute_action_server_ptr->setSucceeded(_result);
+        }else{
+
+            execute_action_server_ptr->setAborted(_result);
+        }
+
+        /*
+        bool finnished_before_timeout = action_client_ptr->waitForResult(ros::Duration(timeout));
+        if(finnished_before_timeout){
+            actionlib::SimpleClientGoalState state = action_client_ptr->getState();
+            ROS_INFO("Action finished: %s",state.toString().c_str());
+            execute_action_server_ptr->setSucceeded(_result);
+        }
+        else{
+            ROS_INFO("Action did not finish before the time out.",std::to_string(timeout)," Cancelling pipeline");
+            action_client_ptr->cancelGoal();
+            execute_action_server_ptr->setAborted(_result);
+            break;
+        }
+        */
+    }
+}
 
 int main(int argc, char** argv){
     ros::init(argc, argv, "grasping");
@@ -299,8 +374,10 @@ int main(int argc, char** argv){
     ROS_INFO("action_server found.");
 
     std::cout << "... and we're spinning in the main thread!" << std::endl;
-    ros::ServiceServer server = n.advertiseService("pepper_grasping", runTask);
+    ros::ServiceServer server = n.advertiseService("/pepper_grasping", runTask);
 
+    execute_action_server_ptr.reset(new actionlib::SimpleActionServer<pepper_mtc_msgs::PepperExecuteSolutionAction>("/pepper_grasping/exec", executeSolution));
+    execute_action_server_ptr->start();
 
     // needed to also ensure that in task encapsuled service calls work
     ros::MultiThreadedSpinner().spin();

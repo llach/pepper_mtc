@@ -87,7 +87,7 @@ int main(int argc, char** argv){
 
     ros::NodeHandle nh;
     ros::NodeHandle nh_private("~");
-    ros::ServiceClient client = nh.serviceClient<pepper_mtc_msgs::PepperGrasping>("pepper_grasping");
+    ros::ServiceClient client = nh.serviceClient<pepper_mtc_msgs::PepperGrasping>("/pepper_grasping");
 
     int p = 3;
     nh_private.getParam("primitive", p);
