@@ -273,7 +273,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
 //            ROS_INFO("COLLISION_OBJECTS FIRST OP: %i",scene_diff.world.collision_objects.at(0).operation);
 //        }
 //    }
-
+/*
     //EXECUTE
     for(moveit_task_constructor_msgs::SubTrajectory sub_traj: msg.sub_trajectory){
         trajectory_msgs::JointTrajectory trajectory = sub_traj.trajectory.joint_trajectory;
@@ -296,7 +296,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
         }
 
     }
-
+*/
 
     res.solutions={"1"};
     return true;
@@ -304,6 +304,7 @@ bool runTask(pepper_mtc_msgs::PepperFindGraspPlan::Request  &req,
 
 void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConstPtr &goal){
 
+    ROS_INFO("GOT GOAL!");
     ros::Rate r(1);
     moveit_task_constructor_msgs::Solution msg = current_solutions.at(goal->goal.solution_id);
     //EXECUTE
@@ -320,6 +321,7 @@ void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConst
         // TODO: NON BLOCKING WITH SLEEP, check for preempted
         while(!action_client_ptr->getState().isDone()){
             if(execute_action_server_ptr->isPreemptRequested()){
+                ROS_INFO("PREEMPT!");
                 //ROS_INFO("Action did not finish successfully. Cancelling pipeline");
                 action_client_ptr->cancelGoal();
                 execute_action_server_ptr->setPreempted(result_);
@@ -331,9 +333,11 @@ void executeSolution(const pepper_mtc_msgs::PepperExecuteSolutionActionGoalConst
         }
         if(action_client_ptr->getState().state_ == actionlib::SimpleClientGoalState::SUCCEEDED){
 
+            ROS_INFO("SUCCESS!");
             execute_action_server_ptr->setSucceeded(result_);
         }else{
 
+            ROS_INFO("FAIL!");
             execute_action_server_ptr->setAborted(result_);
         }
 
