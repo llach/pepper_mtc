@@ -120,16 +120,33 @@ bool BimanualGraspPose::compute(){
 	target_pose.header.frame_id = object_name;
 	target_pose.pose.orientation.w = 1.0;
 
-	auto spawnSolution = [this, scene](geometry_msgs::PoseStamped pose, double yoffset, double cost = 0.0) {
+	auto spawnSolution = [this, scene](geometry_msgs::PoseStamped pose, double xoffset, double yoffset, double zoffset, double cost = 0.0) {
 		moveit::task_constructor::InterfaceState state(scene);
 		moveit::task_constructor::SubTrajectory trajectory;
 		// right is shifted by -offset
-		pose.pose.position.y = -yoffset;
+		pose.pose.position.x -= xoffset;
+		pose.pose.position.y -= yoffset;
+		pose.pose.position.z -= zoffset;
+		// rotate grasp frame according to grasp axis (default: y)
+		if (xoffset != 0) {
+			Eigen::Quaterniond q;
+			tf::quaternionMsgToEigen(pose.pose.orientation, q);
+			ROS_INFO_STREAM("x surface rotation from "<<pose.pose.orientation);
+			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(-0.5 * M_PI, Eigen::Vector3d::UnitZ()), pose.pose.orientation);
+			ROS_INFO_STREAM("to "<<pose.pose.orientation);
+		} else if (zoffset != 0) {
+			Eigen::Quaterniond q;
+			tf::quaternionMsgToEigen(pose.pose.orientation, q);
+			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(0.5 * M_PI, Eigen::Vector3d::UnitX()), pose.pose.orientation);
+			ROS_INFO("z surface rotation");
+		}
 		state.properties().set("target_pose_right", pose);
 		rviz_marker_tools::appendFrame(trajectory.markers(), pose, 0.1, "grasp frame/right");
 
 		// left is shifted by +offset
-		pose.pose.position.y = +yoffset;
+		pose.pose.position.x += 2*xoffset;
+		pose.pose.position.y += 2*yoffset;
+		pose.pose.position.z += 2*zoffset;
 		// ...and turned 180° about z
 		Eigen::Quaterniond q;
 		tf::quaternionMsgToEigen(pose.pose.orientation, q);
@@ -146,17 +163,48 @@ bool BimanualGraspPose::compute(){
 	case(shapes::ShapeType::BOX): {
 		const double *size = std::static_pointer_cast<const shapes::Box>(shape)->size;
 		double delta = props.get<double>("linear_delta");
+		// box surfaces on y axis
 		double xmax = size[0] / 2.0, x = -xmax;
 		while (x <= xmax) {
 			double zmax = size[2] / 2.0, z = -zmax;
 			while (z <= zmax) {
 				target_pose.pose.position.x = x;
+				target_pose.pose.position.y = 0;
 				target_pose.pose.position.z = z;
-				spawnSolution(target_pose, size[1] / 2.0, std::abs(x) + std::abs(z));
+				spawnSolution(target_pose, 0, size[1] / 2.0, 0, std::abs(x) + std::abs(z));
 				z += delta;
 			}
 			x += delta;
 		}
+
+		// x axis
+		double ymax = size[0] / 2.0, y = -ymax;
+		while (y <= ymax) {
+			double zmax = size[2] / 2.0, z = -zmax;
+			while (z <= zmax) {
+				target_pose.pose.position.x = 0;
+				target_pose.pose.position.y = y;
+				target_pose.pose.position.z = z;
+				spawnSolution(target_pose, size[0] / 2.0, 0, 0, std::abs(y) + std::abs(z));
+				z += delta;
+			}
+			y += delta;
+		}
+
+		// z axis
+		xmax = size[0] / 2.0, x = -xmax;
+		while (x <= xmax) {
+			double ymax = size[2] / 2.0, y = -ymax;
+			while (y <= ymax) {
+				target_pose.pose.position.x = x;
+				target_pose.pose.position.y = y;
+				target_pose.pose.position.z = 0;
+				spawnSolution(target_pose, 0, 0, size[2] / 2.0, std::abs(x) + std::abs(y));
+				y += delta;
+			}
+			x += delta;
+		}
+
 		break;
 	}
 	case(shapes::ShapeType::SPHERE): {
@@ -166,7 +214,7 @@ bool BimanualGraspPose::compute(){
 		while (angle < M_PI / 4.) {
 			tf::quaternionEigenToMsg(Eigen::Quaterniond(Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitZ())),
 			                         target_pose.pose.orientation);
-			spawnSolution(target_pose, radius);
+			spawnSolution(target_pose, 0, radius, 0);
 			angle += delta;
 		}
 		break;
@@ -183,10 +231,10 @@ bool BimanualGraspPose::compute(){
 				target_pose.pose.position.z = z;
 				tf::quaternionEigenToMsg(Eigen::Quaterniond(Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitZ())),
 				                         target_pose.pose.orientation);
-				spawnSolution(target_pose, radius, std::abs(z));
+				spawnSolution(target_pose, 0, radius, 0, std::abs(z));
 				z += linear_delta;
 			}
-			spawnSolution(target_pose, radius);
+			spawnSolution(target_pose, 0, radius, 0);
 			angle += angle_delta;
 		}
 		break;
