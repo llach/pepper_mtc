@@ -127,19 +127,6 @@ bool BimanualGraspPose::compute(){
 		pose.pose.position.x -= xoffset;
 		pose.pose.position.y -= yoffset;
 		pose.pose.position.z -= zoffset;
-		// rotate grasp frame according to grasp axis (default: y)
-		if (xoffset != 0) {
-			Eigen::Quaterniond q;
-			tf::quaternionMsgToEigen(pose.pose.orientation, q);
-			ROS_INFO_STREAM("x surface rotation from "<<pose.pose.orientation);
-			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(-0.5 * M_PI, Eigen::Vector3d::UnitZ()), pose.pose.orientation);
-			ROS_INFO_STREAM("to "<<pose.pose.orientation);
-		} else if (zoffset != 0) {
-			Eigen::Quaterniond q;
-			tf::quaternionMsgToEigen(pose.pose.orientation, q);
-			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(0.5 * M_PI, Eigen::Vector3d::UnitX()), pose.pose.orientation);
-			ROS_INFO("z surface rotation");
-		}
 		state.properties().set("target_pose_right", pose);
 		rviz_marker_tools::appendFrame(trajectory.markers(), pose, 0.1, "grasp frame/right");
 
@@ -158,11 +145,28 @@ bool BimanualGraspPose::compute(){
 		spawn(std::move(state), std::move(trajectory));
 	};
 
+	auto spawnBoxSolutions = [this, scene, spawnSolution](geometry_msgs::PoseStamped pose, double xoffset, double yoffset, double zoffset, double cost = 0.0) {
+		// in case of a box we want grasps from all possible sides and directions
+		Eigen::Quaterniond q;
+		tf::quaternionMsgToEigen(pose.pose.orientation, q);
+
+		for(int i = 0; i < 4; i ++) {
+			q = q * Eigen::AngleAxisd(0.5*i*M_PI, Eigen::Vector3d::UnitY());
+			tf::quaternionEigenToMsg(q, pose.pose.orientation);
+			spawnSolution(pose, xoffset, yoffset, zoffset, cost);
+
+			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ()), pose.pose.orientation);
+			spawnSolution(pose, -xoffset, -yoffset, -zoffset, cost);
+		}	
+	};
+
 	const auto& props = properties();
 	switch(shape->type) {
 	case(shapes::ShapeType::BOX): {
 		const double *size = std::static_pointer_cast<const shapes::Box>(shape)->size;
 		double delta = props.get<double>("linear_delta");
+		Eigen::Quaterniond q;
+
 		// box surfaces on y axis
 		double xmax = size[0] / 2.0, x = -xmax;
 		while (x <= xmax) {
@@ -171,21 +175,23 @@ bool BimanualGraspPose::compute(){
 				target_pose.pose.position.x = x;
 				target_pose.pose.position.y = 0;
 				target_pose.pose.position.z = z;
-				spawnSolution(target_pose, 0, size[1] / 2.0, 0, std::abs(x) + std::abs(z));
+				spawnBoxSolutions(target_pose, 0, size[1] / 2.0, 0, std::abs(x) + std::abs(z));
 				z += delta;
 			}
 			x += delta;
 		}
 
 		// x axis
-		double ymax = size[0] / 2.0, y = -ymax;
+		double ymax = size[1] / 2.0, y = -ymax;
+		tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
+		tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(-0.5 * M_PI, Eigen::Vector3d::UnitZ()), target_pose.pose.orientation);
 		while (y <= ymax) {
 			double zmax = size[2] / 2.0, z = -zmax;
 			while (z <= zmax) {
 				target_pose.pose.position.x = 0;
 				target_pose.pose.position.y = y;
 				target_pose.pose.position.z = z;
-				spawnSolution(target_pose, size[0] / 2.0, 0, 0, std::abs(y) + std::abs(z));
+				spawnBoxSolutions(target_pose, size[0] / 2.0, 0, 0, std::abs(y) + std::abs(z));
 				z += delta;
 			}
 			y += delta;
@@ -193,13 +199,15 @@ bool BimanualGraspPose::compute(){
 
 		// z axis
 		xmax = size[0] / 2.0, x = -xmax;
+		tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
+		tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(0.5 * M_PI, Eigen::Vector3d::UnitX()), target_pose.pose.orientation);
 		while (x <= xmax) {
-			double ymax = size[2] / 2.0, y = -ymax;
+			double ymax = size[1] / 2.0, y = -ymax;
 			while (y <= ymax) {
 				target_pose.pose.position.x = x;
 				target_pose.pose.position.y = y;
 				target_pose.pose.position.z = 0;
-				spawnSolution(target_pose, 0, 0, size[2] / 2.0, std::abs(x) + std::abs(y));
+				spawnBoxSolutions(target_pose, 0, 0, size[2] / 2.0, std::abs(x) + std::abs(y));
 				y += delta;
 			}
 			x += delta;
