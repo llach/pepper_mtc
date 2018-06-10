@@ -166,52 +166,61 @@ bool BimanualGraspPose::compute(){
 		const double *size = std::static_pointer_cast<const shapes::Box>(shape)->size;
 		double delta = props.get<double>("linear_delta");
 		Eigen::Quaterniond q;
+		double minDist = 0.2; // min distance of end effectors (pepper robot)
+		ROS_INFO_STREAM("object size: "<<size[0]<<size[1]<<size[2]);
 
 		// box surfaces on y axis
-		double xmax = size[0] / 2.0, x = -xmax;
-		while (x <= xmax) {
-			double zmax = size[2] / 2.0, z = -zmax;
-			while (z <= zmax) {
-				target_pose.pose.position.x = x;
-				target_pose.pose.position.y = 0;
-				target_pose.pose.position.z = z;
-				spawnBoxSolutions(target_pose, 0, size[1] / 2.0, 0, std::abs(x) + std::abs(z));
-				z += delta;
+		if(size[1] > minDist) {
+			double xmax = size[0] / 2.0, x = -xmax;
+			while (x <= xmax) {
+				double zmax = size[2] / 2.0, z = -zmax;
+				while (z <= zmax) {
+					target_pose.pose.position.x = x;
+					target_pose.pose.position.y = 0;
+					target_pose.pose.position.z = z;
+					spawnBoxSolutions(target_pose, 0, size[1] / 2.0, 0, std::abs(x) + std::abs(z));
+					z += delta;
+				}
+				x += delta;
 			}
-			x += delta;
 		}
-
+		
 		// x axis
-		double ymax = size[1] / 2.0, y = -ymax;
-		tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
-		tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(-0.5 * M_PI, Eigen::Vector3d::UnitZ()), target_pose.pose.orientation);
-		while (y <= ymax) {
-			double zmax = size[2] / 2.0, z = -zmax;
-			while (z <= zmax) {
-				target_pose.pose.position.x = 0;
-				target_pose.pose.position.y = y;
-				target_pose.pose.position.z = z;
-				spawnBoxSolutions(target_pose, size[0] / 2.0, 0, 0, std::abs(y) + std::abs(z));
-				z += delta;
+		if (size[0] > minDist) {
+			double ymax = size[1] / 2.0, y = -ymax;
+			tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
+			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(-0.5 * M_PI, Eigen::Vector3d::UnitZ()), target_pose.pose.orientation);
+			while (y <= ymax) {
+				double zmax = size[2] / 2.0, z = -zmax;
+				while (z <= zmax) {
+					target_pose.pose.position.x = 0;
+					target_pose.pose.position.y = y;
+					target_pose.pose.position.z = z;
+					spawnBoxSolutions(target_pose, size[0] / 2.0, 0, 0, std::abs(y) + std::abs(z));
+					z += delta;
+				}
+				y += delta;
 			}
-			y += delta;
 		}
 
 		// z axis
-		xmax = size[0] / 2.0, x = -xmax;
-		tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
-		tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(0.5 * M_PI, Eigen::Vector3d::UnitX()), target_pose.pose.orientation);
-		while (x <= xmax) {
-			double ymax = size[1] / 2.0, y = -ymax;
-			while (y <= ymax) {
-				target_pose.pose.position.x = x;
-				target_pose.pose.position.y = y;
-				target_pose.pose.position.z = 0;
-				spawnBoxSolutions(target_pose, 0, 0, size[2] / 2.0, std::abs(x) + std::abs(y));
-				y += delta;
+		if (size[2] > minDist) {
+			double xmax = size[0] / 2.0, x = -xmax;
+			tf::quaternionMsgToEigen(target_pose.pose.orientation, q);
+			tf::quaternionEigenToMsg(q * Eigen::AngleAxisd(0.5 * M_PI, Eigen::Vector3d::UnitX()), target_pose.pose.orientation);
+			while (x <= xmax) {
+				double ymax = size[1] / 2.0, y = -ymax;
+				while (y <= ymax) {
+					target_pose.pose.position.x = x;
+					target_pose.pose.position.y = y;
+					target_pose.pose.position.z = 0;
+					spawnBoxSolutions(target_pose, 0, 0, size[2] / 2.0, std::abs(x) + std::abs(y));
+					y += delta;
+				}
+				x += delta;
 			}
-			x += delta;
 		}
+		
 
 		break;
 	}

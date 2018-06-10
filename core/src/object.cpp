@@ -89,7 +89,7 @@ int main(int argc, char** argv){
     ros::NodeHandle nh_private("~");
     ros::ServiceClient client = nh.serviceClient<pepper_mtc_msgs::PepperFindGraspPlan>("/pepper_grasping");
 
-    int p = 3;
+    int p = 0;
     nh_private.getParam("primitive", p);
 
     std::string obj = "object";
